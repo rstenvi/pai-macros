@@ -2,6 +2,13 @@
 name = "pai-macros"
 version = "0.1.0"
 edition = "2021"
+license-file = "LICENSE"
+description = "PAI macros"
+readme = "README.md"
+homepage = "https://github.com/rstenvi/pai-macros"
+repository = "https://github.com/rstenvi/pai-macros"
+keywords = ["pai"]
+
 
 [lib]
 proc-macro = true
