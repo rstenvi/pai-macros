@@ -211,3 +211,121 @@ impl Code {
 pub fn pai_hook(_attr: TokenStream, stream: TokenStream) -> TokenStream {
 	Code::generate(stream)
 }
+
+struct RegsCode;
+
+impl RegsCode {
+	fn generate(stream: TokenStream) -> TokenStream {
+		let input = syn::parse_macro_input!(stream as syn::DeriveInput);
+		let name = input.ident.clone();
+		let syn::Data::Struct(input) = input.data else { panic!("") };
+		let mut gets = Vec::new();
+		let mut sizes = Vec::new();
+		let mut sp: Option<(syn::Ident, syn::Type)> = None;
+		let mut pc: Option<(syn::Ident, syn::Type)> = None;
+		let mut set_sysno: Option<(syn::Ident, syn::Type)> = None;
+		let mut get_sysno: Option<syn::Ident> = None;
+		for field in input.fields.iter() {
+			let ident = field.ident.as_ref().unwrap().clone();
+
+			for attr in field.attrs.iter() {
+				let p = attr.path();
+				if p.is_ident("sp") {
+					sp = Some((ident.clone(), field.ty.clone()));
+				} else if p.is_ident("pc") {
+					pc = Some((ident.clone(), field.ty.clone()));
+				} else if p.is_ident("sysno") {
+					set_sysno = Some((ident.clone(), field.ty.clone()));
+					get_sysno = Some(ident.clone());
+				} else if p.is_ident("setsysno") {
+					set_sysno = Some((ident.clone(), field.ty.clone()));
+				} else if p.is_ident("getsysno") {
+					get_sysno = Some(ident.clone());
+				}
+			}
+
+			let name = format!("{ident}");
+			let ins = quote! { #name => Some(std::mem::offset_of!(Self, #ident)), };
+			gets.push(ins);
+			let ins = quote! { #name => Some(std::mem::size_of_val(&self.#ident)), };
+			sizes.push(ins);
+		}
+		let spcode = if let Some((sp, ty)) = sp {
+			quote! {
+				fn _get_sp(&self) -> u64 {
+					self.#sp as u64
+				}
+				fn _set_sp(&mut self, sp: u64) {
+					self.#sp = sp as #ty;
+				}
+			}
+		} else {
+			quote!()
+		};
+		let pccode = if let Some((pc, ty)) = pc {
+			quote! {
+				fn _get_pc(&self) -> u64 {
+					self.#pc as u64
+				}
+				fn _set_pc(&mut self, pc: u64) {
+					self.#pc = pc as #ty;
+				}
+			}
+		} else {
+			quote!()
+		};
+		let sysnocode = if let Some(get) = get_sysno {
+			let (set, ty) = set_sysno.unwrap();
+			quote! {
+				fn _get_sysno(&self) -> usize {
+					self.#get as usize
+				}
+				fn _set_sysno(&mut self, sysno: usize) {
+					self.#set = sysno as #ty;
+				}
+			}
+		} else {
+			quote!()
+		};
+		let res = quote! {
+			impl #name {
+				fn _offset_of(&self, regs: &str) -> Option<usize> {
+					match regs {
+						#(#gets)*
+						_ => None,
+					}
+				}
+				fn _size_of(&self, regs: &str) -> Option<usize> {
+					match regs {
+						#(#sizes)*
+						_ => None,
+					}
+				}
+				unsafe fn _get_value(&self, offset: usize, size: usize, data: &mut Vec<u8>) {
+					let v: *const u8 = unsafe { std::mem::transmute(self) };
+					let v = unsafe { v.byte_add(offset) };
+					let v = unsafe { std::slice::from_raw_parts(v, size) };
+					data.extend_from_slice(v);
+				}
+				unsafe fn _set_value(&mut self, offset: usize, data: &[u8]) {
+					let v: *mut u8 = unsafe { std::mem::transmute(self) };
+					let v = unsafe { v.byte_add(offset) };
+					let v: &mut [u8] = unsafe { std::slice::from_raw_parts_mut(v, data.len()) };
+					for (i, b) in v.iter_mut().enumerate() {
+						*b = data[i];
+					}
+				}
+				#spcode
+				#pccode
+				#sysnocode
+			}
+		};
+		res.into()
+	}
+
+}
+
+#[proc_macro_derive(PaiRegs, attributes(sp, pc, sysno, getsysno, setsysno))]
+pub fn derive_regs_attr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+	RegsCode::generate(input)
+}
