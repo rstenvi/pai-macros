@@ -225,6 +225,7 @@ impl RegsCode {
 		let mut pc: Option<(syn::Ident, syn::Type)> = None;
 		let mut set_sysno: Option<(syn::Ident, syn::Type)> = None;
 		let mut get_sysno: Option<syn::Ident> = None;
+		let mut fields = Vec::new();
 		for field in input.fields.iter() {
 			let ident = field.ident.as_ref().unwrap().clone();
 
@@ -245,6 +246,7 @@ impl RegsCode {
 			}
 
 			let name = format!("{ident}");
+			fields.push(name.clone());
 			let ins = quote! { #name => Some(std::mem::offset_of!(Self, #ident)), };
 			gets.push(ins);
 			let ins = quote! { #name => Some(std::mem::size_of_val(&self.#ident)), };
@@ -300,6 +302,9 @@ impl RegsCode {
 						#(#sizes)*
 						_ => None,
 					}
+				}
+				fn _fields(&self) -> &[&str] {
+					&[#(#fields),*]
 				}
 				unsafe fn _get_value(&self, offset: usize, size: usize, data: &mut Vec<u8>) {
 					let v: *const u8 = unsafe { std::mem::transmute(self) };
