@@ -1,3 +1,4 @@
+//! Procedural macros used together with [pai](https://docs.rs/pai)
 use proc_macro::TokenStream;
 use quote::quote;
 
@@ -43,7 +44,7 @@ impl Code {
 			};
 			
 			if let Some(frame) = inputs.first() {
-				if Self::is_ptr_to(&frame, "CallFrame") {
+				if Self::is_ptr_to(frame, "CallFrame") {
 					// fn(???, &CallFrame, arg...)
 					let frame = inputs.remove(0);
 					let ident = Self::get_ident(&frame);
@@ -207,6 +208,9 @@ impl Code {
 	}
 }
 
+/// Helper macro for more convenient hooking of functions. See an example of use
+/// in
+/// [hook-autogen.rs](https://github.com/rstenvi/pai/blob/main/examples/hook-autogen.rs)
 #[proc_macro_attribute]
 pub fn pai_hook(_attr: TokenStream, stream: TokenStream) -> TokenStream {
 	Code::generate(stream)
@@ -307,13 +311,13 @@ impl RegsCode {
 					&[#(#fields),*]
 				}
 				unsafe fn _get_value(&self, offset: usize, size: usize, data: &mut Vec<u8>) {
-					let v: *const u8 = unsafe { std::mem::transmute(self) };
+					let v: *const u8 = self as *const Self as *const u8;
 					let v = unsafe { v.byte_add(offset) };
 					let v = unsafe { std::slice::from_raw_parts(v, size) };
 					data.extend_from_slice(v);
 				}
 				unsafe fn _set_value(&mut self, offset: usize, data: &[u8]) {
-					let v: *mut u8 = unsafe { std::mem::transmute(self) };
+					let v: *mut u8 = self as *mut Self as *mut u8;
 					let v = unsafe { v.byte_add(offset) };
 					let v: &mut [u8] = unsafe { std::slice::from_raw_parts_mut(v, data.len()) };
 					for (i, b) in v.iter_mut().enumerate() {
@@ -330,6 +334,8 @@ impl RegsCode {
 
 }
 
+/// Used internally by [pai](https://docs.rs/pai) to create registers that are
+/// accessible cross-architecture.
 #[proc_macro_derive(PaiRegs, attributes(sp, pc, sysno, getsysno, setsysno))]
 pub fn derive_regs_attr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 	RegsCode::generate(input)
